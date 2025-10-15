@@ -1,24 +1,26 @@
-import bpy, json, mathutils
-import os, bpy; p=bpy.path.abspath("//"); print(p, os.access(p, os.W_OK))
-import tempfile
+import bpy, json, mathutils, os, tempfile
 
 def world_coords_of_plane_corners(obj):
-    # assumes a plane mesh with 4 verts; returns them in world space
     deps = bpy.context.evaluated_depsgraph_get()
     eval_obj = obj.evaluated_get(deps)
     mesh = eval_obj.to_mesh()
+    mw = eval_obj.matrix_world
     corners = []
     for v in mesh.vertices[:4]:
-        corners.append((obj.matrix_world @ v.co).to_tuple())
+        corners.append((mw @ v.co).to_tuple())
     eval_obj.to_mesh_clear()
     return corners
 
-def gaze_from_camera(cam_obj):
-    # Blender camera looks along -Z in local space; world dir is -Z transformed
-    return (cam_obj.matrix_world.to_3x3() @ mathutils.Vector((0,0,-1))).normalized().to_tuple()
+def basis_from_matrix_world(obj):
+    # Blender camera local axes: right(+X), up(+Y), forward(-Z)
+    R = obj.matrix_world.to_3x3()
+    right_ws   = (R @ mathutils.Vector(( 1, 0,  0))).normalized().to_tuple()
+    up_ws      = (R @ mathutils.Vector(( 0, 1,  0))).normalized().to_tuple()
+    forward_ws = (R @ mathutils.Vector(( 0, 0, -1))).normalized().to_tuple()
+    return right_ws, up_ws, forward_ws
 
 def is_sphere(obj):
-    return obj.type == 'MESH' and ('sphere' in obj.name.lower() or 'uvsphere' in obj.data.name.lower())
+    return obj.type == 'MESH' and ('sphere' in obj.name.lower() or 'sphere' in obj.data.name.lower())
 
 def is_cube(obj):
     return obj.type == 'MESH' and ('cube' in obj.name.lower() or 'cube' in obj.data.name.lower())
@@ -26,8 +28,16 @@ def is_cube(obj):
 def is_plane(obj):
     return obj.type == 'MESH' and ('plane' in obj.name.lower() or 'plane' in obj.data.name.lower())
 
+scene = bpy.context.scene
+res_x = int(round(scene.render.resolution_x * scene.render.resolution_percentage / 100))
+res_y = int(round(scene.render.resolution_y * scene.render.resolution_percentage / 100))
+
 scene_data = []
-for obj in bpy.context.scene.objects:
+for obj in scene.objects:
+    # Skip unsupported types (optional)
+    if obj.type not in {'CAMERA', 'LIGHT', 'MESH'}:
+        continue
+
     entry = {
         "name": obj.name,
         "type": obj.type,
@@ -38,44 +48,47 @@ for obj in bpy.context.scene.objects:
 
     if obj.type == 'CAMERA':
         cam = obj.data
+        right_ws, up_ws, forward_ws = basis_from_matrix_world(obj)
         entry["camera"] = {
             "focal_length_mm": cam.lens,
             "sensor_width_mm": cam.sensor_width,
             "sensor_height_mm": cam.sensor_height,
-            "resolution_px": [bpy.context.scene.render.resolution_x,
-                              bpy.context.scene.render.resolution_y],
-            "gaze_dir_ws": list(gaze_from_camera(obj))
+            "resolution_px": [res_x, res_y],
+            "gaze_dir_ws": list(forward_ws),
+            "up_ws": list(up_ws),
+            "right_ws": list(right_ws)
         }
 
-    if obj.type == 'LIGHT' and obj.data.type == 'POINT':
+    elif obj.type == 'LIGHT' and obj.data.type == 'POINT':
         entry["light"] = {
             "kind": "POINT",
             "radiant_intensity": obj.data.energy
         }
 
-    if is_sphere(obj):
-        # Treat radius as average of world scales (assumes unit sphere mesh)
-        avg_scale = sum(obj.scale) / 3.0
+    elif is_sphere(obj):
+        # Assume unit sphere source; export a 1D radius
+        avg_scale = (obj.scale[0] + obj.scale[1] + obj.scale[2]) / 3.0
         entry["sphere"] = {"radius": avg_scale}
 
-    if is_cube(obj):
+    elif is_cube(obj):
         entry["cube"] = {"uniform_scale": (obj.scale[0] + obj.scale[1] + obj.scale[2]) / 3.0}
 
-    if is_plane(obj):
+    elif is_plane(obj):
         entry["plane"] = {"corners_ws": world_coords_of_plane_corners(obj)}
 
+    else:
+        # unhandled mesh like cylinder/meta -> skip
+        continue
+
     scene_data.append(entry)
-    
+
 def _safe_out_path(filename: str) -> str:
-    # Prefer the .blend directory
     blend_dir = bpy.path.abspath("//")
     if blend_dir and os.access(blend_dir, os.W_OK):
         return os.path.join(blend_dir, filename)
-    # Fallback to a guaranteed-writable temp directory
     return os.path.join(tempfile.gettempdir(), filename)
 
-out_path = _safe_out_path(f"{bpy.context.scene.name}_scene.json")
+out_path = _safe_out_path(f"{scene.name}_scene.json")
 with open(out_path, "w") as f:
     json.dump(scene_data, f, indent=2)
 print("✅ Wrote:", out_path)
-

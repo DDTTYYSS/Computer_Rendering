@@ -88,7 +88,7 @@ def _safe_out_path(filename: str) -> str:
         return os.path.join(blend_dir, filename)
     return os.path.join(tempfile.gettempdir(), filename)
 
-out_path = _safe_out_path(f"{scene.name}_scene.json")
+out_path = _safe_out_path(f"../ASCII/{scene.name}_scene.json")
 with open(out_path, "w") as f:
     json.dump(scene_data, f, indent=2)
 print("✅ Wrote:", out_path)

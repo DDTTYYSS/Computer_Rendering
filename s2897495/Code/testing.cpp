@@ -20,7 +20,8 @@ int main(int argc, char** argv) {
     try {
         Camera cam;
         cam.loadFromFile(scenePath);
-        Ray r = cam.generateRay(cam.res_x/2.0f, cam.res_y/2.0f);
+        Ray r = cam.generateRay(cam.res_x/2.0f - 0.5f,
+            cam.res_y/2.0f - 0.5f);
         std::cout << "center dir: " << r.dir.x << " " << r.dir.y << " " << r.dir.z << "\n";
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";

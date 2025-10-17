@@ -21,16 +21,3 @@ s2897495/
 
 ## Build & Run
 
-```bash
-cd s2897495/Code
-make
-make run
-```
-
-The renderer writes a PPM image to `../Output/output.ppm`.
-
-## Notes
-- Add texture `.ppm` files under `Textures/`.
-- Place exported ASCII scenes under `ASCII/` (e.g., `scene.txt`).
-- Submit your PDF report to `Report/s2897495.pdf`.
-- Fill in `System.txt` (system spec) and `FeatureList.txt` (implemented features).
